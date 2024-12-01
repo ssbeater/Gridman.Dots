@@ -21,7 +21,7 @@ logo='
 '
 # Display logo and title
 echo -e "${BLUE}${logo}${NC}"
-echo -e "${PURPLE}Welcome to the Gentleman.Dots Auto Config!${NC}"
+echo -e "${PURPLE}Welcome to the Gridman.Dots Auto Config!${NC}"
 
 sudo -v
 
@@ -223,8 +223,206 @@ else
   run_command ". $HOME/.cargo/env"
 fi
 
+# Function to clone repository with progress bar
+clone_repository_with_progress() {
+  local repo_url="$1"
+  local clone_dir="$2"
+  local progress_duration=$3
+
+  echo -e "${YELLOW}Cloning repository...${NC}"
+
+  if [ "$show_details" = "No" ]; then
+    # Run clone command in the background and show progress
+    (git clone "$repo_url" "$clone_dir" &>/dev/null) &
+    spinner "$progress_duration"
+  else
+    # Run clone command normally
+    git clone "$repo_url" "$clone_dir"
+  fi
+}
+
 # Install Homebrew if not installed
 install_homebrew
+
+# Function to install a terminal emulator with progress
+install_terminal_with_progress() {
+  local term_name="$1"
+  local install_command="$2"
+  local config_command="$3"
+
+  echo -e "${YELLOW}Installing $term_name...${NC}"
+
+  if [ "$show_details" = "No" ]; then
+    # Run installation in the background and show progress
+    (eval "$install_command" &>/dev/null) &
+    spinner
+  else
+    # Run installation normally
+    eval "$install_command"
+  fi
+
+  echo -e "${YELLOW}Configuring $term_name...${NC}"
+  eval "$config_command"
+}
+
+echo -e "${YELLOW}Step 1: Choose and Install Terminal Emulator${NC}"
+if is_wsl; then
+  echo -e "${YELLOW}You are running WSL. Terminal emulators should be installed on Windows.${NC}"
+else
+  if [ "$os_choice" = "linux" ]; then
+    if is_arch; then
+      term_choice=$(select_option "Which terminal emulator do you want to install? " "alacritty" "wezterm" "none")
+    else
+      echo -e "${YELLOW}Note: Kitty is not available for Linux.${NC}"
+      term_choice=$(select_option "Which terminal emulator do you want to install? " "alacritty" "wezterm" "none")
+    fi
+  else
+    term_choice=$(select_option "Which terminal emulator do you want to install? " "alacritty" "wezterm" "kitty" "none")
+  fi
+
+  case "$term_choice" in
+  "alacritty")
+    if ! command -v alacritty &>/dev/null; then
+      if is_arch; then
+        install_terminal_with_progress "Alacritty" "sudo pacman -S --noconfirm alacritty" "mkdir -p ~/.config/alacritty && cp alacritty.toml ~/.config/alacritty/alacritty.toml"
+      else
+        install_terminal_with_progress "Alacritty" "sudo add-apt-repository ppa:aslatter/ppa && sudo apt-get update && sudo apt-get install alacritty" "mkdir -p ~/.config/alacritty && cp alacritty.toml ~/.config/alacritty/alacritty.toml"
+      fi
+    else
+      echo -e "${GREEN}Alacritty is already installed.${NC}"
+    fi
+    ;;
+  "wezterm")
+    if ! command -v wezterm &>/dev/null; then
+      if is_arch; then
+        install_terminal_with_progress "WezTerm" "sudo pacman -S --noconfirm wezterm" "mkdir -p ~/.config/wezterm && cp .wezterm.lua ~/.config/wezterm/wezterm.lua"
+      else
+        install_terminal_with_progress "WezTerm" "curl -fsSL https://apt.fury.io/wez/gpg.key | sudo gpg --yes --dearmor -o /usr/share/keyrings/wezterm-fury.gpg && echo 'deb [signed-by=/usr/share/keyrings/wezterm-fury.gpg] https://apt.fury.io/wez/ * *' | sudo tee /etc/apt/sources.list.d/wezterm.list && sudo apt update && sudo apt install wezterm" "mkdir -p ~/.config/wezterm && cp .wezterm.lua ~/.config/wezterm/wezterm.lua"
+      fi
+    else
+      echo -e "${GREEN}WezTerm is already installed.${NC}"
+    fi
+    ;;
+  "kitty")
+    if [ "$os_choice" = "mac" ]; then
+      if ! command -v kitty &>/dev/null; then
+        install_terminal_with_progress "Kitty" "brew install --cask kitty" "mkdir -p ~/.config/kitty && cp -r kitty/* ~/.config/kitty"
+      else
+        echo -e "${GREEN}Kitty is already installed.${NC}"
+      fi
+    else
+      echo -e "${YELLOW}Kitty installation is not available for Linux.${NC}"
+    fi
+    ;;
+  *)
+    echo -e "${YELLOW}No terminal emulator will be installed or configured.${NC}"
+    ;;
+  esac
+
+  if [ "$term_choice" != "none" ]; then
+    echo -e "${YELLOW}Iosevka Term Nerd Font is required for the terminal emulator.${NC}"
+    font_installed=$(select_option "Do you already have Iosevka Term Nerd Font installed?" "Yes" "No")
+    if [ "$font_installed" = "No" ]; then
+      echo -e "${YELLOW}Installing Iosevka Term Nerd Font...${NC}"
+      if [ "$os_choice" = "linux" ]; then
+        mkdir -p ~/.local/share/fonts
+        wget -O ~/.local/share/fonts/Iosevka.zip https://github.com/ryanoasis/nerd-fonts/releases/download/v2.1.0/Iosevka.zip
+        unzip ~/.local/share/fonts/Iosevka.zip -d ~/.local/share/fonts/
+        fc-cache -fv
+      elif [ "$os_choice" = "mac" ]; then
+        brew install --cask font-iosevka-term-nerd-font
+      fi
+      echo -e "${GREEN}Iosevka Term Nerd Font installed.${NC}"
+    else
+      echo -e "${GREEN}Iosevka Term Nerd Font is already installed.${NC}"
+    fi
+  fi
+fi
+
+# Shared Steps (macOS, Linux, or WSL)
+
+# Function to install shell or plugins with progress bar
+install_shell_with_progress() {
+  local name="$1"
+  local install_command="$2"
+
+  echo -e "${YELLOW}Installing $name...${NC}"
+  if [ "$show_details" = "No" ]; then
+    (eval "$install_command" &>/dev/null) &
+    spinner
+  else
+    eval "$install_command"
+  fi
+}
+
+set_as_default_shell() {
+  local name="$1"
+
+  echo -e "${YELLOW}Setting default shell to $name...${NC}"
+  local shell_path
+  shell_path=$(which "$name") # Obtener el camino completo del shell
+
+  if [ -n "$shell_path" ]; then
+    sudo sh -c "grep -Fxq \"$shell_path\" /etc/shells || echo \"$shell_path\" >> /etc/shells"
+
+    sudo chsh -s "$shell_path" "$USER"
+
+    if [ "$SHELL" != "$shell_path" ]; then
+      echo -e "${RED}Error: Shell did not change. Please check manually.${NC}"
+      echo -e "${GREEN}Command: sudo chsh -s $shell_path \$USER ${NC}"
+    else
+      echo -e "${GREEN}Shell changed to $shell_path successfully.${NC}"
+    fi
+  else
+    echo -e "${RED}Shell $name not found.${NC}"
+  fi
+}
+
+echo -e "${YELLOW}Step 2: Choose and Install Shell${NC}"
+shell_choice=$(select_option "Which shell do you want to install? " "fish" "nushell")
+
+# Case for shell choice
+case "$shell_choice" in
+"nushell")
+  run_command "cp -rf bash-env-json ~/.config/"
+  run_command "cp -rf bash-env.nu ~/.config/"
+
+  install_shell_with_progress "nushell" "brew install nushell carapace zoxide atuin jq bash starship"
+
+  mkdir -p ~/.cache/starship
+  mkdir -p ~/.cache/carapace
+  mkdir -p ~/.local/share/atuin
+
+  run_command "cp -rf starship.toml ~/.config/"
+
+  echo -e "${YELLOW}Configuring Nushell...${NC}"
+
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    mkdir -p ~/Library/Application\ Support/nushell
+    update_or_replace "nushell/env.nu" "/home/linuxbrew/.linuxbrew/bin" "    | prepend '/opt/homebrew/bin'"
+    run_command "cp -rf nushell/* ~/Library/Application\ Support/nushell/"
+  else
+    mkdir -p ~/.config/nushell
+    run_command "cp -rf nushell/* ~/.config/nushell/"
+  fi
+
+  ;;
+"fish")
+  install_shell_with_progress "fish" "brew install fish carapace zoxide atuin starship"
+
+  mkdir -p ~/.cache/starship
+  mkdir -p ~/.cache/carapace
+  mkdir -p ~/.local/share/atuin
+
+  run_command "cp -rf starship.toml ~/.config/"
+
+  echo -e "${YELLOW}Configuring Fish...${NC}"
+  run_command "cp -rf fish ~/.config"
+  ;;
+*)
+  echo -e "${YELLOW}No shell will be installed or configured.${NC}"
+  ;;
+esac
 
 # Function to install dependencies with progress bar
 install_dependencies_with_progress() {
@@ -242,16 +440,221 @@ install_dependencies_with_progress() {
   fi
 }
 
+# Step 3: Additional Configurations
+
+# Dependencies Install
+echo -e "${YELLOW}Step 3: Installing Additional Dependencies...${NC}"
+
+if [ "$os_choice" = "linux" ]; then
+  if ! is_arch; then
+    # Combine the update and upgrade commands for progress (only if not Arch Linux)
+    install_dependencies_with_progress "sudo apt-get update && sudo apt-get upgrade -y"
+  fi
+fi
+
+# Function to install window manager with progress bar
+install_window_manager_with_progress() {
+  local install_command="$1"
+
+  echo -e "${YELLOW}Installing window manager...${NC}"
+
+  if [ "$show_details" = "No" ]; then
+    # Run installation in the background and show progress
+    (eval "$install_command" &>/dev/null) &
+    spinner
+  else
+    # Run installation normally
+    eval "$install_command"
+  fi
+}
+
+# Ask if they want to use Tmux or Zellij, or none
+echo -e "${YELLOW}Step 4: Choose and Install Window Manager${NC}"
+wm_choice=$(select_option "Which window manager do you want to install? " "tmux" "zellij" "none")
+
+case "$wm_choice" in
+"tmux")
+  if ! command -v tmux &>/dev/null; then
+    if [ "$show_details" = "Yes" ]; then
+      install_window_manager_with_progress "brew install tmux"
+    else
+      run_command "brew install tmux"
+    fi
+  else
+    echo -e "${GREEN}Tmux is already installed.${NC}"
+  fi
+
+  echo -e "${YELLOW}Configuring Tmux...${NC}"
+  if [ ! -d "$HOME/.tmux/plugins/tpm" ]; then
+    if [ "$show_details" = "Yes" ]; then
+      install_window_manager_with_progress "git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm"
+    else
+      run_command "git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm"
+    fi
+  else
+    echo -e "${GREEN}Tmux Plugin Manager is already installed.${NC}"
+  fi
+
+  run_command "mkdir -p ~/.tmux"
+  run_command "cp -r tmux/.tmux/* ~/.tmux/"
+  run_command "cp tmux/.tmux.conf ~/"
+
+  echo -e "${YELLOW}Installing Tmux plugins...${NC}"
+  SESSION_NAME="plugin-installation"
+
+  # Check if session already exists and kill it if necessary
+  if tmux has-session -t $SESSION_NAME 2>/dev/null; then
+    echo -e "${YELLOW}Session $SESSION_NAME already exists. Killing it...${NC}"
+    tmux kill-session -t $SESSION_NAME
+  fi
+
+  # Create a new session in detached mode with the specified name
+  tmux new-session -d -s $SESSION_NAME 'source ~/.tmux.conf; tmux run-shell ~/.tmux/plugins/tpm/bin/install_plugins'
+
+  # Check if the user wants to see details
+  if [ "$show_details" = "Yes" ]; then
+    # Use a loop to show progress (adjust as needed)
+    while tmux has-session -t $SESSION_NAME 2>/dev/null; do
+      echo -n "."
+      sleep 1
+    done
+    echo -e "\n${GREEN}Tmux plugins installation complete!${NC}"
+  else
+    # Wait for a few seconds to ensure the installation completes
+    while tmux has-session -t $SESSION_NAME 2>/dev/null; do
+      sleep 1
+    done
+
+    echo -e "${GREEN}Tmux plugins installation complete!${NC}"
+  fi
+
+  # Ensure the tmux session is killed
+  if tmux has-session -t $SESSION_NAME 2>/dev/null; then
+    tmux kill-session -t $SESSION_NAME
+  fi
+  ;;
+"zellij")
+  if [ "$show_details" = "Yes" ]; then
+    install_window_manager_with_progress "brew uninstall zellij | cargo install zellij"
+  else
+    run_command "cargo install zellij"
+  fi
+
+  echo -e "${YELLOW}Configuring Zellij...${NC}"
+  run_command "mkdir -p ~/.config/zellij"
+  run_command "cp -r zellij/* ~/.config/zellij/"
+
+  # Replace TMUX with ZELLIJ and tmux with zellij only in the selected shell configuration
+  if [[ "$shell_choice" == "zsh" ]]; then
+    update_or_replace ~/.zshrc "TMUX" 'WM_VAR="/$ZELLIJ"'
+    update_or_replace ~/.zshrc "tmux" 'WM_CMD="zellij"'
+  elif [[ "$shell_choice" == "fish" ]]; then
+    update_or_replace ~/.config/fish/config.fish "TMUX" "if not set -q ZELLIJ"
+    update_or_replace ~/.config/fish/config.fish "tmux" "zellij"
+  elif [[ "$shell_choice" == "nushell" ]]; then
+    os_type=$(uname)
+
+    if [[ "$os_type" == "Darwin" ]]; then
+      update_or_replace "nushell/config.nu" '"tmux"' 'let MULTIPLEXER = "zellij"'
+      update_or_replace "nushell/config.nu" '"TMUX"' 'let MULTIPLEXER_ENV_PREFIX = "ZELLIJ"'
+      run_command "cp -rf nushell/* ~/Library/Application\ Support/nushell/"
+    else
+      update_or_replace ~/.config/nushell/config.nu '"tmux"' 'let MULTIPLEXER = "zellij"'
+      update_or_replace ~/.config/nushell/config.nu '"TMUX"' 'let MULTIPLEXER_ENV_PREFIX = "ZELLIJ"'
+    fi
+  fi
+  ;;
+"none")
+  echo -e "${YELLOW}No window manager will be installed or configured.${NC}"
+  # If no window manager is chosen, remove the line that executes tmux or zellij
+
+  # Determine the OS type
+  OS_TYPE=$(uname)
+
+  # Function to run sed with appropriate options based on OS
+  run_sed() {
+    local file=$1
+    local pattern=$2
+
+    if [ "$OS_TYPE" = "Darwin" ]; then
+      # macOS
+      sed -i '' "$pattern" "$file"
+    else
+      # Linux and other Unix-like systems
+      sed -i "$pattern" "$file"
+    fi
+  }
+
+  # Check and modify ~/.zshrc if it exists
+  if [ -f ~/.zshrc ]; then
+    run_sed ~/.zshrc '/exec $WM_CMD/d'
+    update_or_replace ~/.zshrc "exec $WM_CMD" "true"
+  fi
+
+  # Check and modify ~/.config/fish/config.fish if it exists
+  if [ -f ~/.config/fish/config.fish ]; then
+    update_or_replace ~/.config/fish/config.fish "tmux" "true"
+    update_or_replace ~/.config/fish/config.fish "zellij" "true"
+  fi
+
+  # Check and modify ~/.config/nushell/config.nu if it exists
+  if [ -f ~/.config/fish/config.fish ] || [ -d ~/Library/Application\ Support/nushell ]; then
+    if [[ "$os_type" == "Darwin" ]]; then
+      update_or_replace "nushell/config.nu" "/run-external $MULTIPLEXER" "true"
+    else
+      update_or_replace ~/.config/nushell/config.nu "/run-external $MULTIPLEXER" "true"
+    fi
+  fi
+  ;;
+*)
+  echo -e "${YELLOW}Invalid option. No window manager will be installed or configured.${NC}"
+  ;;
+esac
+
 # Neovim Configuration
 echo -e "${YELLOW}Step 5: Choose and Install NVIM${NC}"
 install_nvim=$(select_option "Do you want to install Neovim?" "Yes" "No")
 
 if [ "$install_nvim" = "Yes" ]; then
+  OBSIDIAN_PATH=$(prompt_user "Enter the path for your Obsidian vault, it will create the folders for you if they don't exist" "/your/notes/path")
+  ensure_directory_exists "$OBSIDIAN_PATH" "true"
+
   # Install additional packages with Neovim
-  install_dependencies_with_progress "brew install nvim git curl"
+  install_dependencies_with_progress "brew install nvim node npm git gcc fzf fd ripgrep coreutils bat curl lazygit"
 
   # Neovim Configuration
   echo -e "${YELLOW}Configuring Neovim...${NC}"
   run_command "mkdir -p ~/.config/nvim"
-  # run_command "cp -r nvim/* ~/.config/nvim/"
+  run_command "cp -r nvim/* ~/.config/nvim/"
+  # Obsidian Configuration
+  echo -e "${YELLOW}Configuring Obsidian...${NC}"
+  obsidian_config_file="$HOME/.config/nvim/lua/plugins/obsidian.lua"
+
+  if [ -f "$obsidian_config_file" ]; then
+    # Replace the vault path in the existing configuration
+    update_or_replace "$obsidian_config_file" "/your/notes/path" "path = '$OBSIDIAN_PATH'"
+  else
+    echo -e "${RED}Obsidian configuration file not found at $obsidian_config_file. Please check your setup.${NC}"
+  fi
 fi
+
+if [ "$shell_choice" = "nushell" ]; then
+  shell_choice="nu"
+fi
+
+set_as_default_shell "$shell_choice"
+
+echo -e "${GREEN}Configuration complete. Restarting shell...${NC}"
+echo -e "${GREEN}If it doesn't restart, restart your computer or WSL instance??${NC}"
+
+exec $shell_choice
+
+# Install Development Tools
+echo -e "${YELLOW}Step 6: Install Development Tools (Node, Deno, Python, Dotnet)${NC}"
+
+install_dependencies_with_progress "brew install node"
+install_dependencies_with_progress "brew install fnm"
+install_dependencies_with_progress "brew install deno"
+install_dependencies_with_progress "brew install python"
+install_dependencies_with_progress "brew install dotnet"
+install_dependencies_with_progress "brew install dotnet@8"
